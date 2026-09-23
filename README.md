@@ -39,7 +39,7 @@ For each configured station, the action:
 
 | Field | Default | Description |
 |---|---|---|
-| `stations` | required | List of stations, each with `mac`, `name`, `latitude` and `longitude` |
+| `stations` | required | At least one station, each with `mac`, `name`, `latitude` (−90 to 90) and `longitude` (−180 to 180) |
 | `subject_type` | `weather-station` | Subject type for the observations |
 | `high_wind_speed_kmh` | `80.0` | Wind speed at or above which an alert is sent |
 | `heavy_rain_mm_hr` | `50.0` | Rain rate at or above which an alert is sent |

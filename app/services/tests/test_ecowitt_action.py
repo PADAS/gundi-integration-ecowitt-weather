@@ -259,3 +259,29 @@ def test_pull_observations_is_scheduled_every_five_minutes():
 def test_actions_register_with_display_titles(handler, title):
     # Self-registration uses this attribute as the action's name in Gundi
     assert getattr(handler, "action_title", None) == title
+
+
+@pytest.mark.parametrize("config_model", [AuthenticateEcowittConfig, PullObservationsConfiguration])
+def test_every_config_field_is_described_for_the_portal(config_model):
+    schema = config_model.schema()
+    models = [schema, *schema.get("definitions", {}).values()]
+    undescribed = [
+        f"{model['title']}.{name}"
+        for model in models
+        for name, field in model["properties"].items()
+        if not field.get("description")
+    ]
+    assert undescribed == []
+
+
+def test_at_least_one_station_is_required():
+    with pytest.raises(pydantic.ValidationError):
+        PullObservationsConfiguration(stations=[])
+
+
+@pytest.mark.parametrize("latitude, longitude", [(91, 0), (-91, 0), (0, 181), (0, -181)])
+def test_station_coordinates_must_be_in_range(latitude, longitude):
+    with pytest.raises(pydantic.ValidationError):
+        PullObservationsConfiguration(
+            stations=[{"mac": STATION_A, "name": "North Ridge", "latitude": latitude, "longitude": longitude}]
+        )

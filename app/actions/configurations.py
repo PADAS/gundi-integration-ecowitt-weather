@@ -38,10 +38,30 @@ def get_auth_config(integration):
 
 
 class EcowittStation(pydantic.BaseModel):
-    mac: str = pydantic.Field(..., title="MAC Address", description="Station MAC address, e.g. AA:BB:CC:DD:EE:FF")
-    name: str = pydantic.Field(..., title="Name", description="Station name shown in EarthRanger")
-    latitude: float = pydantic.Field(..., title="Latitude")
-    longitude: float = pydantic.Field(..., title="Longitude")
+    mac: str = pydantic.Field(
+        ...,
+        title="MAC Address",
+        description="The station's MAC address as shown in the Ecowitt app, e.g. AA:BB:CC:DD:EE:FF.",
+    )
+    name: str = pydantic.Field(
+        ...,
+        title="Name",
+        description="Station name shown in EarthRanger.",
+    )
+    latitude: float = pydantic.Field(
+        ...,
+        title="Latitude",
+        description="Station latitude in decimal degrees. The Ecowitt API doesn't report a location.",
+        ge=-90,
+        le=90,
+    )
+    longitude: float = pydantic.Field(
+        ...,
+        title="Longitude",
+        description="Station longitude in decimal degrees.",
+        ge=-180,
+        le=180,
+    )
 
     @pydantic.validator("mac")
     def normalize_mac(cls, value):
@@ -49,10 +69,35 @@ class EcowittStation(pydantic.BaseModel):
 
 
 class PullObservationsConfiguration(PullActionConfiguration, ExecutableActionMixin):
-    stations: List[EcowittStation] = pydantic.Field(..., title="Weather Stations")
-    subject_type: str = "weather-station"
+    stations: List[EcowittStation] = pydantic.Field(
+        ...,
+        title="Weather Stations",
+        description="Ecowitt stations to pull readings from. Each needs its MAC address, a name and coordinates.",
+        min_items=1,
+    )
+    subject_type: str = pydantic.Field(
+        "weather-station",
+        title="Subject Type",
+        description="Subject type given to the stations' observations.",
+    )
     # Alert thresholds
-    high_wind_speed_kmh: float = 80.0
-    heavy_rain_mm_hr: float = 50.0
-    extreme_temp_high_c: float = 45.0
-    extreme_temp_low_c: float = -20.0
+    high_wind_speed_kmh: float = pydantic.Field(
+        80.0,
+        title="High Wind Speed Alert (km/h)",
+        description="Send an alert when the wind speed reaches this value.",
+    )
+    heavy_rain_mm_hr: float = pydantic.Field(
+        50.0,
+        title="Heavy Rain Alert (mm/hr)",
+        description="Send an alert when the rain rate reaches this value.",
+    )
+    extreme_temp_high_c: float = pydantic.Field(
+        45.0,
+        title="High Temperature Alert (°C)",
+        description="Send an alert when the outdoor temperature reaches this value.",
+    )
+    extreme_temp_low_c: float = pydantic.Field(
+        -20.0,
+        title="Low Temperature Alert (°C)",
+        description="Send an alert when the outdoor temperature falls to this value.",
+    )
