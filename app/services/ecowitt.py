@@ -1,5 +1,6 @@
 import datetime
 import logging
+import re
 from typing import List, Optional
 
 import httpx
@@ -8,6 +9,26 @@ import stamina
 from app.settings.integration import ECOWITT_API_BASE_URL
 
 logger = logging.getLogger(__name__)
+
+
+class _RedactEcowittKeysFilter(logging.Filter):
+    """Redact the Ecowitt credentials from httpx's request logs.
+
+    Ecowitt only accepts the keys as query parameters, and httpx logs every
+    request URL at INFO level.
+    """
+
+    _KEY_PARAM = re.compile(r"\b(application_key|api_key)=[^&\s\"]+")
+
+    def filter(self, record):
+        message = record.getMessage()
+        redacted = self._KEY_PARAM.sub(r"\1=REDACTED", message)
+        if redacted != message:
+            record.msg, record.args = redacted, ()
+        return True
+
+
+logging.getLogger("httpx").addFilter(_RedactEcowittKeysFilter())
 
 # Ask for every category so newer sensors (e.g. the WS90's piezo rain gauge,
 # reported under "rainfall_piezo") are included without listing them here.
@@ -274,16 +295,25 @@ async def validate_ecowitt_credentials(application_key: str, api_key: str) -> bo
         return False
 
 
+class EcowittHTTPError(Exception):
+    """An HTTP error from the Ecowitt API.
+
+    Unlike httpx.HTTPStatusError, its message leaves out the request URL,
+    which carries the API keys.
+    """
+
+    def __init__(self, status_code: int):
+        super().__init__(f"Ecowitt API returned HTTP {status_code}")
+        self.status_code = status_code
+
+
 def _is_retryable(exc: Exception) -> bool:
     """Retry network failures, rate limiting and server errors, not client errors."""
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    if isinstance(exc, EcowittHTTPError):
+        return exc.status_code == 429 or exc.status_code >= 500
     return isinstance(exc, httpx.TransportError)
 
 
-# Bounded so a failing station can't hold up the other stations in a run;
-# the next scheduled pull is the longer-term retry.
-@stamina.retry(on=_is_retryable, attempts=3, timeout=60.0, wait_initial=2.0, wait_max=10.0)
 async def fetch_realtime_data(application_key: str, api_key: str, mac: str) -> dict:
     """Fetch real-time data from Ecowitt Cloud API v3."""
     url = f"{ECOWITT_API_BASE_URL}/api/v3/device/real_time"
@@ -293,10 +323,18 @@ async def fetch_realtime_data(application_key: str, api_key: str, mac: str) -> d
         "mac": mac,
         "call_back": CALLBACK_CATEGORIES,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-        result = response.json()
-        if result.get("code") != 0:
-            raise ValueError(f"Ecowitt API error: {result.get('msg', 'Unknown error')} (code: {result.get('code')})")
-        return result.get("data", {})
+    # Bounded so a failing station can't hold up the other stations in a run;
+    # the next scheduled pull is the longer-term retry. A retry context rather
+    # than @stamina.retry, which would attach the API keys to its retry logs.
+    async for attempt in stamina.retry_context(
+        on=_is_retryable, attempts=3, timeout=60.0, wait_initial=2.0, wait_max=10.0
+    ):
+        with attempt:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+            if response.is_error:
+                raise EcowittHTTPError(response.status_code)
+    result = response.json()
+    if result.get("code") != 0:
+        raise ValueError(f"Ecowitt API error: {result.get('msg', 'Unknown error')} (code: {result.get('code')})")
+    return result.get("data", {})

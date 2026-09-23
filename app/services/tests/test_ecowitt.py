@@ -5,6 +5,7 @@ import pytest
 import stamina
 
 from app.services.ecowitt import (
+    EcowittHTTPError,
     build_observation,
     check_alert_conditions,
     fetch_realtime_data,
@@ -333,6 +334,35 @@ class TestFetchRealtimeData:
     @pytest.mark.asyncio
     async def test_does_not_retry_client_errors(self, mock_ecowitt_http, stamina_retries):
         requests = mock_ecowitt_http([httpx.Response(403), httpx.Response(403), httpx.Response(403)])
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(EcowittHTTPError):
             await fetch_realtime_data(application_key="app", api_key="api", mac="AA:BB:CC:DD:EE:FF")
         assert len(requests) == 1
+
+    @pytest.mark.asyncio
+    async def test_api_keys_are_redacted_from_request_logs(self, mock_ecowitt_http, caplog, ws90_realtime_data):
+        mock_ecowitt_http([httpx.Response(200, json={"code": 0, "data": ws90_realtime_data})])
+        with caplog.at_level("INFO", logger="httpx"):
+            await fetch_realtime_data(application_key="secret-app-key", api_key="secret-api-key", mac="AA:BB:CC:DD:EE:FF")
+        logged = "\n".join(record.getMessage() for record in caplog.records)
+        assert "HTTP Request" in logged
+        assert "secret-app-key" not in logged
+        assert "secret-api-key" not in logged
+
+    @pytest.mark.asyncio
+    async def test_http_errors_do_not_include_api_keys(self, mock_ecowitt_http):
+        mock_ecowitt_http([httpx.Response(403)])
+        with pytest.raises(EcowittHTTPError) as exc_info:
+            await fetch_realtime_data(application_key="secret-app-key", api_key="secret-api-key", mac="AA:BB:CC:DD:EE:FF")
+        assert exc_info.value.status_code == 403
+        assert "secret" not in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_api_keys_are_not_attached_to_retry_logs(
+        self, mock_ecowitt_http, stamina_retries, caplog, ws90_realtime_data
+    ):
+        mock_ecowitt_http([httpx.Response(503), httpx.Response(200, json={"code": 0, "data": ws90_realtime_data})])
+        with caplog.at_level("INFO"):
+            await fetch_realtime_data(application_key="secret-app-key", api_key="secret-api-key", mac="AA:BB:CC:DD:EE:FF")
+        retry_records = [r for r in caplog.records if r.name == "stamina"]
+        assert retry_records, "expected stamina to log the retry"
+        assert all("secret" not in repr(vars(r)) for r in retry_records)
