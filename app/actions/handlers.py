@@ -1,7 +1,9 @@
 import datetime
 import logging
 
+from app.actions.core import action_title
 from app.actions.configurations import AuthenticateEcowittConfig, PullObservationsConfiguration, get_auth_config
+from app.services.action_scheduler import crontab_schedule
 from app.services.activity_logger import activity_logger
 from app.services.gundi import send_observations_to_gundi, send_events_to_gundi
 from app.services.ecowitt import (
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 state_manager = IntegrationStateManager()
 
 
+@action_title("Authenticate with Ecowitt")
 async def action_auth(integration, action_config: AuthenticateEcowittConfig):
     """
     Verify Ecowitt API credentials by calling the API.
@@ -89,6 +92,8 @@ async def _pull_station(integration, station, action_config, application_key, ap
     return observation, new_alerts, new_state
 
 
+@action_title("Pull Weather Observations")
+@crontab_schedule("*/5 * * * *")
 @activity_logger()
 async def action_pull_observations(integration, action_config: PullObservationsConfiguration):
     integration_id = str(integration.id)

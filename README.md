@@ -12,7 +12,7 @@ registration, activity logging, scheduling and webhooks.
 
 ## Actions
 
-### `auth`: Authenticate
+### `auth`: Authenticate with Ecowitt
 
 Checks the Ecowitt credentials by calling the real-time endpoint with a
 placeholder MAC address. It returns `{"valid_credentials": true|false}`.
@@ -25,7 +25,7 @@ placeholder MAC address. It returns `{"valid_credentials": true|false}`.
 Both keys come from the API settings of the Ecowitt account that owns the
 stations.
 
-### `pull_observations`: Pull Observations
+### `pull_observations`: Pull Weather Observations
 
 For each configured station, the action:
 
@@ -50,8 +50,10 @@ For each configured station, the action:
 Coordinates are required because the Ecowitt real-time API doesn't return a
 location. MAC addresses are normalized to upper case.
 
-The code doesn't set a schedule. Set one when registering the integration,
-e.g. `python -m app.register --schedule "pull_observations:*/5 * * * *"`.
+The action runs every 5 minutes (`*/5 * * * *`, set with `@crontab_schedule` in
+`app/actions/handlers.py`). To register a different schedule, pass
+`--schedule` to `python -m app.register`, which overrides the decorator, e.g.
+`--schedule "pull_observations:*/15 * * * *"`.
 
 The action returns `observations_sent`, `events_sent`, `stations_skipped`
 (readings already sent) and `stations_failed`.

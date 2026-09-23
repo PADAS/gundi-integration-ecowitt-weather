@@ -243,3 +243,19 @@ async def test_pull_raises_alert_again_after_condition_clears(
         await action_pull_observations(integration=integration_with_id, action_config=pull_observations_config)
 
     assert sent_alert_types(pull_env) == [(STATION_A, "high_wind_speed"), (STATION_A, "high_wind_speed")]
+
+
+def test_pull_observations_is_scheduled_every_five_minutes():
+    from app.services.action_scheduler import CrontabSchedule
+
+    # Self-registration sends this attribute to Gundi as the action's schedule
+    assert action_pull_observations.crontab_schedule == CrontabSchedule.parse_obj_from_crontab("*/5 * * * *")
+
+
+@pytest.mark.parametrize(
+    "handler, title",
+    [(action_auth, "Authenticate with Ecowitt"), (action_pull_observations, "Pull Weather Observations")],
+)
+def test_actions_register_with_display_titles(handler, title):
+    # Self-registration uses this attribute as the action's name in Gundi
+    assert getattr(handler, "action_title", None) == title
