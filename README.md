@@ -149,6 +149,15 @@ pip install -r requirements.txt
 pytest
 ```
 
+On macOS, use a native Python for your Mac's architecture. cryptography, a
+dependency of the Google Cloud auth library, publishes macOS wheels for Apple
+Silicon only. On an Apple Silicon Mac, an x86_64 Python (e.g. Intel Homebrew
+under `/usr/local`, or a uv `macos-x86_64` build) has no wheel to install and
+fails trying to build cryptography from source. Create the virtualenv with
+an arm64 Python, e.g. `uv venv --python cpython-3.10-macos-aarch64`. On an
+Intel Mac, building from source needs Rust and OpenSSL, so running with
+Docker Compose is simpler.
+
 After editing `requirements.in`, recompile the pinned requirements:
 
 ```bash
